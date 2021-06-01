@@ -1,0 +1,93 @@
+# Travail sous un WorkFlow
+
+Nous allons utiliser un autre dataset afin de mettre en oeuvre un flux de travail appelé workflow afin d'établir un modèle en passant par du feature engineering
+
+```{r,echo=TRUE,message=FALSE,warning=FALSE}
+set.seed(271)
+vente_maison <- readRDS("vente_immeuble.rds")
+vente_maison <- vente_maison %>% select(-selling_date)
+vente_maison_split <- vente_maison %>% initial_split(strata = selling_price,prop = .75)
+maison_train <- training(vente_maison_split)
+maison_test <- testing(vente_maison_split)
+```
+
+## Feauture Engeneering
+
+A ce niveau de débat ,nous allons préparer nos données en y appliquant certains transformeurs par exemple la normalisation ou la standardisation de variables quantitatives etc,l'imputation des données manquantes ou la conversion de certains facteurs en variables latentes ,etc.Pour accéder à ces transformeurs ,il faudra écrire une fonction step\_ en ayant chargé au préalable la bibliothèque rsample du framework tidymodels.
+
+\par
+
+En ce qui nous concerne,nous allons développer un modèle de regression linéaire dont la variable explicative est selling_price en fonction des autres variables de la base de données . Nous allons ,pour ce faire,transformer tous les prédicteurs quantitatifs en variables normales puis en les centrant et en les réduisant;quant aux prédicteurs qualitatifs nominaux ,nous allons les transformer en variables factices.🤪
+
+🤸‍♂️🤸‍♂️🤸‍♂️🤸‍♂️🤸‍♂️🤸‍♂️🤸‍♂️🤸‍♂️Finis de rigoler ,passons aux choses sérieuses
+
+```{r ,echo=TRUE,message=FALSE,message=F}
+maison_train_recipe <-  recipe(selling_price~.,data =maison_train ) %>%
+  step_YeoJohnson(all_numeric(),-all_outcomes()) %>% 
+  step_normalize(all_numeric(),-all_outcomes()) %>% 
+  step_dummy(all_nominal(),-all_outcomes())
+  
+```
+
+Nous devons présentement configurer cette feauture engeneering et l'adapter à nos données d'entraînement (càd trainset)
+
+```{r,echo=T,message=FALSE,warning=FALSE}
+ maison_train_recipe %>% prep() %>% bake(new_data=maison_test) %>% datatable()
+```
+
+Bingo!😱😱😱😱😱😱,nous venons de réaliser du feauture engeneering
+
+## SPécification du modèle
+
+A l'aide du package parsnip,nous allons définir notre modèle de regression linéaire:
+
+```{r}
+lm_model <- linear_reg() %>% 
+  set_engine("lm") %>% 
+  set_mode("regression")
+```
+
+## Création du workflow
+
+Nous allons enfin créer un flux de travail pour tidymodels
+
+```{r,message=FALSE,warning=F}
+maisons_workflow <- workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(maison_train_recipe )
+
+```
+
+Nous allons finalement entraîner notre workflow
+
+```{r}
+maison_train_fit <- maisons_workflow %>% 
+  last_fit(split=vente_maison_split)
+```
+
+Pour afficher les métriques ,nous allons utiliser la fonction "collect_metrics"
+
+```{r,message=FALSE,warning=FALSE}
+maison_train_fit %>% collect_metrics() %>% datatable()
+
+```
+
+Récupérons les valeurs prédites par notre modèle
+
+```{r}
+maison_train_fit %>% collect_predictions() %>% datatable()
+```
+
+## Importance des prédicteurs
+
+```{r}
+ maison_train_baked <- maison_train_recipe %>% prep() %>% bake(new_data=maison_train) 
+  maison_train_baked %>% datatable()
+```
+
+```{r,echo=F,message=FALSE,warning=FALSE}
+lm_fit_maison <- lm_model %>% 
+  fit(selling_price~.,data= maison_train_baked)
+vip(lm_fit_maison,aesthetics=list(fill="blue"))+theme_clean()+
+  theme(panel.grid = element_blank())
+```
